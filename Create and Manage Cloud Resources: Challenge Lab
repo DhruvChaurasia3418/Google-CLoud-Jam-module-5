@@ -22,47 +22,62 @@ kubectl create deployment hello-server --image=gcr.io/google-samples/hello-app:2
 kubectl expose deployment hello-server \
 --type=LoadBalancer \
 --port $PORT
-cat > startup.sh << EOF
-#! /bin/bash
+
+
+# Create a startup script for nginx instances
+cat << EOF > startup.sh
+#!/bin/bash
 apt-get update
 apt-get install -y nginx
 service nginx start
 sed -i -- 's/nginx/Google Cloud Platform - '"\$HOSTNAME"'/' /var/www/html/index.nginx-debian.html
 EOF
-gcloud compute instance-templates create web-server-template --region $REGION \
---metadata-from-file startup-script=startup.sh \
---network nucleus-vpc \
---machine-type e2-micro
-gcloud compute target-pools create nginx-pool --region=$REGION
-gcloud compute instance-groups managed create web-server-group --region $REGION \
---base-instance-name web-server \
---size 2 \
---template web-server-template
+
+# Create an instance template
+gcloud compute instance-templates create nginx-template \
+  --machine-type=n1-standard-1 \
+  --metadata-from-file startup-script=startup.sh
+
+# Create a target pool
+gcloud compute target-pools create nginx-pool
+
+# Create a managed instance group
+gcloud compute instance-groups managed create nginx-group \
+  --base-instance-name=nginx \
+  --size=2 \
+  --template=nginx-template \
+  --zone=$ZONE
+
+# Create a firewall rule to allow traffic on port 80
 gcloud compute firewall-rules create $FIREWALL_RULE_NAME \
---allow tcp:80 \
---network nucleus-vpc
+  --allow tcp:80 \
+  --target-tags=nginx-group \
+  --source-ranges=0.0.0.0/0
+
+# Create a health check
 gcloud compute http-health-checks create http-basic-check
-gcloud compute instance-groups managed \
-set-named-ports web-server-group \
---named-ports http:80 \
---region $REGION
-gcloud compute backend-services create web-server-backend \
---protocol HTTP \
---http-health-checks http-basic-check \
---global
-gcloud compute backend-services add-backend web-server-backend \
---instance-group web-server-group \
---instance-group-region $REGION \
---global
-gcloud compute url-maps create web-server-map \
---default-service web-server-backend
+
+# Create a backend service and attach the managed instance group
+gcloud compute backend-services create nginx-backend-service \
+  --protocol=HTTP \
+  --http-health-checks=http-basic-check \
+  --global
+
+gcloud compute backend-services add-backend nginx-backend-service \
+  --instance-group=nginx-group \
+  --instance-group-zone=$ZONE \
+  --global
+
+# Create a URL map
+gcloud compute url-maps create web-map \
+  --default-service=nginx-backend-service
+
+# Create a target HTTP proxy
 gcloud compute target-http-proxies create http-lb-proxy \
---url-map web-server-map
+  --url-map=web-map
+
+# Create a forwarding rule
 gcloud compute forwarding-rules create http-content-rule \
---global \
---target-http-proxy http-lb-proxy \
---ports 80
-gcloud compute forwarding-rules create $FIREWALL_RULE_NAME \
---global \
---target-http-proxy http-lb-proxy \
---ports 80
+  --global \
+  --target-http-proxy=http-lb-proxy \
+  --port-range=80
