@@ -4,14 +4,14 @@ export PORT=
 export FIREWALL_RULE_NAME=
 
 -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-gcloud compute instances create nucleus-jumphost-131 \
+gcloud compute instances create $INSTANCE_NAME \
   --zone=$ZONE \
   --machine-type=e2-micro
 
 # Set the default zone and region
 
 # Create a Kubernetes cluster
-gcloud container clusters create $INSTANCE_NAME \
+gcloud container clusters create nucleus-cluster \
   --zone=$ZONE \
   --num-nodes=1 \
   --machine-type=n1-standard-1
