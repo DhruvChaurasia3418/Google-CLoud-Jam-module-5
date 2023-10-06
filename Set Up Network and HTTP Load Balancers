@@ -2,7 +2,7 @@ export REGION=
 
 export ZONE=
 
-$ZONE
+
 gcloud config set compute/region $REGION
 gcloud config set compute/zone $ZONE
   gcloud compute instances create www1 \
